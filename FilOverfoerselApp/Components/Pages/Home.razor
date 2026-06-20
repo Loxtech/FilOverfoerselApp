@@ -1,0 +1,100 @@
+@page "/"
+@using FilOverfoerselApp.Services
+@using System.Security.Cryptography
+@inject IAesHandler AesHandler
+@rendermode InteractiveServer
+
+<PageTitle>Fil overførsel app</PageTitle>
+
+<h3>Fil overførsel app</h3>
+
+@if (!string.IsNullOrEmpty(_statusMessage))
+{
+    <div class="alert @_statusClass mt-3">@_statusMessage</div>
+}
+
+<div class="mt-3" style="max-width:400px">
+    <InputFile OnChange="OnFileSelected" class="form-control mb-3" />
+
+    @if (_selectedFile != null)
+    {
+        <p class="text-muted small">Valgt: <strong>@_selectedFile.Name</strong> (@FormatSize(_selectedFile.Size))</p>
+    }
+
+    <button class="btn btn-primary"
+            @onclick="SendFile"
+            disabled="@(_sending || _selectedFile == null)">
+        @if (_sending)
+        {
+            <span class="spinner-border spinner-border-sm me-2"></span>
+            <span>Sender...</span>
+        }
+        else
+        {
+            <span>Send fil</span>
+        }
+    </button>
+</div>
+
+@code {
+    private IBrowserFile? _selectedFile;
+    private bool          _sending;
+    private string?       _statusMessage;
+    private string        _statusClass = "alert-success";
+
+    private void OnFileSelected(InputFileChangeEventArgs e)
+    {
+        _selectedFile  = e.File;
+        _statusMessage = null;
+    }
+
+    private async Task SendFile()
+    {
+        if (_selectedFile == null) return;
+
+        _sending       = true;
+        _statusMessage = null;
+
+        try
+        {
+            // ── Læs fil til memory — aldrig til disk ──────────────────────
+            const long MaxBytes = 50 * 1024 * 1024; // 50 MB max
+            await using var stream = _selectedFile.OpenReadStream(MaxBytes);
+            using var ms           = new MemoryStream();
+            await stream.CopyToAsync(ms);
+            byte[] fileBytes = ms.ToArray();
+
+            // ── Hent og verificer RSA public key ──────────────────────────
+            string publicKey = await AesHandler.FetchAndVerifyPublicKeyAsync();
+
+            // ── Krypter og send ───────────────────────────────────────────
+            await AesHandler.EncryptAndSendAsync(fileBytes, _selectedFile.Name, publicKey);
+
+            _statusMessage = "Upload successful!";
+            _statusClass   = "alert-success";
+            _selectedFile  = null;
+        }
+        catch (CryptographicException ex)
+        {
+            // MITM-advarsel eller dekrypteringsfejl
+            _statusMessage = $"Sikkerhedsfejl: {ex.Message}";
+            _statusClass   = "alert-danger";
+        }
+        catch (Exception ex)
+        {
+            _statusMessage = $"Fejl: {ex.Message}";
+            _statusClass   = "alert-danger";
+        }
+        finally
+        {
+            _sending = false;
+        }
+    }
+
+    private static string FormatSize(long bytes) => bytes switch
+    {
+        < 1024        => $"{bytes} B",
+        < 1024 * 1024 => $"{bytes / 1024.0:F1} KB",
+        _             => $"{bytes / 1024.0 / 1024.0:F1} MB"
+    };
+}
