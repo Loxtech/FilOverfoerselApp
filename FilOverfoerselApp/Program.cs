@@ -8,6 +8,7 @@ builder.Services.AddRazorComponents()
 
 // AesHandler til kryptering og kommunikation med FilUploadApp
 builder.Services.AddHttpClient<IAesHandler, AesHandler>();
+builder.Services.AddHttpClient<IAesGcmHandler, AesGcmHandler>();
 
 var app = builder.Build();
 

@@ -41,6 +41,8 @@ namespace FilOverfoerselApp.Services
 
             string fingerprint = ComputeFingerprint(pem);
 
+
+            //MITM-beskyttelse via fingerprint pinning
             lock (_fingerprintLock)
             {
                 if (_pinnedFingerprint == null)
@@ -101,11 +103,13 @@ namespace FilOverfoerselApp.Services
             return ms.ToArray();
         }
 
+
+        // Bruger OAEP-SHA256 som er mere sikker end PKCS#1 v1.5 padding (Ikke outdated)
         private static byte[] EncryptAesKeyWithRsa(byte[] aesKey, string publicKeyPem)
         {
             using var rsa = RSA.Create();
-            rsa.ImportFromPem(publicKeyPem.AsSpan()); // SPKI PEM — moderne standard
-            return rsa.Encrypt(aesKey, RSAEncryptionPadding.OaepSHA256); // OAEP, ikke PKCS#1 v1.5
+            rsa.ImportFromPem(publicKeyPem.AsSpan()); 
+            return rsa.Encrypt(aesKey, RSAEncryptionPadding.OaepSHA256); 
         }
 
         private static string ComputeFingerprint(string pem)
